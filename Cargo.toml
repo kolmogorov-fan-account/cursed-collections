@@ -1,0 +1,6 @@
+[package]
+name = "lazy-array"
+version = "0.1.0"
+authors = ["Simon Génier <1782845+animalsiknow@users.noreply.github.com>"]
+
+[dependencies]
