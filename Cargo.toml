@@ -1,9 +1,10 @@
 [package]
 name = "lazy-array"
 description = "An array where entries are lazily initialized in any order."
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Simon Génier <1782845+animalsiknow@users.noreply.github.com>"]
 homepage = "https://github.com/animalsiknow/lazy-array"
 license = "GPL-3.0+"
+readme = "README.md"
 
 [dependencies]
