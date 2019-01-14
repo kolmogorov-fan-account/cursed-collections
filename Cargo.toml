@@ -6,5 +6,6 @@ authors = ["Simon Génier <1782845+animalsiknow@users.noreply.github.com>"]
 homepage = "https://github.com/animalsiknow/lazy-array"
 license = "GPL-3.0+"
 readme = "README.md"
+edition = "2018"
 
 [dependencies]
