@@ -26,6 +26,12 @@ impl<T> LazyArray<T> {
   }
 }
 
+impl<T> Default for LazyArray<T> {
+  fn default() -> Self {
+    Self::new(0)
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::LazyArray;
