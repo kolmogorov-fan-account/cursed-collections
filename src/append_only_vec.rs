@@ -144,6 +144,12 @@ impl<T> AppendOnlyVec<T> {
   }
 }
 
+impl<T> Default for AppendOnlyVec<T> {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::{AppendOnlyVec, SEGMENT_CAPACITY};
