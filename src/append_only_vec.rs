@@ -1,6 +1,8 @@
 use std::{cell, mem, ops, ptr};
 
-const SEGMENT_CAPACITY: usize = 32;
+const SEGMENT_CAPACITY_LOG_2: usize = 5;
+const SEGMENT_CAPACITY: usize = 1 << SEGMENT_CAPACITY_LOG_2;
+const SEGMENT_CAPACITY_MASK: usize = SEGMENT_CAPACITY - 1;
 
 struct Segment<T> {
   len: usize,
@@ -17,6 +19,34 @@ impl<T> Segment<T> {
 
   fn is_full(&self) -> bool {
     self.len >= SEGMENT_CAPACITY
+  }
+
+  /// Retrieves a reference to a slot within the segment, that may be unintialized memory.
+  ///
+  /// # Safety
+  ///
+  /// The returned reference points to initialized memory if and only if the given `index` is
+  /// smaller than `self.len`.
+  unsafe fn get_slot(&self, index: usize) -> &T {
+    if let Some(ref elements) = self.elements {
+      &elements[index]
+    } else {
+      panic!()
+    }
+  }
+
+  /// Retrieves a mutable reference to a slot within the segment, that may be unintialized memory.
+  ///
+  /// # Safety
+  ///
+  /// The returned reference points to initialized memory if and only if the given `index` is
+  /// smaller than `self.len`.
+  unsafe fn get_slot_mut(&mut self, index: usize) -> &mut T {
+    if let Some(ref mut elements) = self.elements {
+      &mut elements[index]
+    } else {
+      panic!()
+    }
   }
 }
 
@@ -38,19 +68,21 @@ impl<T> ops::Index<usize> for Segment<T> {
   type Output = T;
 
   fn index(&self, index: usize) -> &<Self as ops::Index<usize>>::Output {
-    match self.elements {
-      Some(ref elements) => elements.index(index),
-      None => panic!(),
+    if self.len <= index {
+      panic!("index out of bounds")
     }
+
+    unsafe { self.get_slot(index) }
   }
 }
 
 impl<T> std::ops::IndexMut<usize> for Segment<T> {
   fn index_mut(&mut self, index: usize) -> &mut <Self as ops::Index<usize>>::Output {
-    match self.elements {
-      Some(ref mut elements) => elements.index_mut(index),
-      None => panic!(),
+    if self.len <= index {
+      panic!("index out of bounds")
     }
+
+    unsafe { self.get_slot_mut(index) }
   }
 }
 
@@ -113,10 +145,15 @@ impl<T> AppendOnlyVec<T> {
 
       // A simple assignment is not enough because *element_ref = element would invoke drop on
       // the previous value of *element_ref, which is uninitialized memory.
-      let element_ref = &mut last_segment[len];
+      let element_ref = last_segment.get_slot_mut(len);
       mem::forget(mem::replace(element_ref, element));
       element_ref
     }
+  }
+
+  unsafe fn get_segment_at(&self, index: usize) -> &Segment<T> {
+    let segments = self.segments();
+    &*segments[index].get()
   }
 
   unsafe fn get_segment_with_spare_capacity(&self) -> &mut Segment<T> {
@@ -150,6 +187,17 @@ impl<T> Default for AppendOnlyVec<T> {
   }
 }
 
+impl<T> ops::Index<usize> for AppendOnlyVec<T> {
+  type Output = T;
+
+  fn index(&self, index: usize) -> &Self::Output {
+    unsafe {
+      let segment = self.get_segment_at(index >> SEGMENT_CAPACITY_LOG_2);
+      &segment[index & SEGMENT_CAPACITY_MASK]
+    }
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::{AppendOnlyVec, SEGMENT_CAPACITY};
@@ -176,5 +224,24 @@ mod tests {
       format!("{}", SEGMENT_CAPACITY).as_str(),
       references[SEGMENT_CAPACITY].as_str()
     );
+  }
+
+  #[test]
+  fn index() {
+    let vec = AppendOnlyVec::<String>::new();
+    vec.push("hello".into());
+    vec.push("bye".into());
+
+    assert_eq!(vec[0], "hello");
+    assert_eq!(vec[1], "bye");
+  }
+
+  #[test]
+  #[should_panic]
+  fn index_out_of_bounds() {
+    let vec = AppendOnlyVec::<String>::new();
+    vec.push("hello".into());
+    vec.push("bye".into());
+    &vec[2];
   }
 }
