@@ -134,7 +134,7 @@ impl<T> AppendOnlyVec<T> {
     }
   }
 
-  /// Consumes a T, appends it to the end of the vector, and returns a reference to the newly
+  /// Consumes a `T`, appends it to the end of the vector, and returns a reference to the newly
   /// appended element.
   pub fn push(&self, element: T) -> &T {
     unsafe {
@@ -148,6 +148,18 @@ impl<T> AppendOnlyVec<T> {
       let element_ref = last_segment.get_slot_mut(len);
       mem::forget(mem::replace(element_ref, element));
       element_ref
+    }
+  }
+
+  /// Return the number of elements in the vector.
+  pub fn len(&self) -> usize {
+    unsafe {
+      let segments = self.segments();
+      if let Some(last_segment) = segments.last() {
+        ((segments.len() - 1) << SEGMENT_CAPACITY_LOG_2) + (&*last_segment.get()).len
+      } else {
+        0
+      }
     }
   }
 
@@ -201,6 +213,7 @@ impl<T> ops::Index<usize> for AppendOnlyVec<T> {
 #[cfg(test)]
 mod tests {
   use super::{AppendOnlyVec, SEGMENT_CAPACITY};
+  use std::ptr;
 
   #[test]
   fn it_works() {
@@ -220,6 +233,7 @@ mod tests {
     }
 
     assert_eq!(&"0", &references[0]);
+    assert!(ptr::eq(&vec[0], references[0]));
     assert_eq!(
       format!("{}", SEGMENT_CAPACITY).as_str(),
       references[SEGMENT_CAPACITY].as_str()
@@ -243,5 +257,27 @@ mod tests {
     vec.push("hello".into());
     vec.push("bye".into());
     &vec[2];
+  }
+
+  #[test]
+  fn len_empty() {
+    let vec = AppendOnlyVec::<String>::new();
+    assert_eq!(0, vec.len())
+  }
+
+  #[test]
+  fn len_1() {
+    let vec = AppendOnlyVec::<String>::new();
+    vec.push("hello".into());
+    assert_eq!(1, vec.len())
+  }
+
+  #[test]
+  fn len_multiple_segments() {
+    let vec = AppendOnlyVec::<String>::new();
+    for i in 0..(SEGMENT_CAPACITY + 1) {
+      vec.push(format!("{}", i));
+    }
+    assert_eq!(33, vec.len())
   }
 }
