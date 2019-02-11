@@ -1,16 +1,15 @@
 use std::cell;
 
 #[derive(Debug)]
-pub struct LazyArray<T>(cell::UnsafeCell<Vec<Option<T>>>);
+pub struct LazyArray<T>(cell::UnsafeCell<Box<[Option<T>]>>);
 
 impl<T> LazyArray<T> {
   pub fn new(size: usize) -> LazyArray<T> {
-    let mut inner = Vec::new();
-    inner.reserve(size);
+    let mut init = Vec::<Option<T>>::with_capacity(size);
     for _ in 0..size {
-      inner.push(None);
+      init.push(None)
     }
-    LazyArray(cell::UnsafeCell::new(inner))
+    LazyArray(cell::UnsafeCell::new(init.into_boxed_slice()))
   }
 
   pub fn get_or_insert(&self, index: usize, t: T) -> &T {
