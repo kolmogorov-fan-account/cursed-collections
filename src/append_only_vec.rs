@@ -99,8 +99,8 @@ impl<T> std::ops::IndexMut<usize> for Segment<T> {
 /// to directly pattern match against values of this type.
 ///
 /// ```
-/// use cursed_collections::AppendOnlyVec;
-///
+/// # use cursed_collections::AppendOnlyVec;
+/// #
 /// enum MyData<'buffers> {
 ///   Array(&'buffers [MyData<'buffers>]),
 ///   String(&'buffers str),

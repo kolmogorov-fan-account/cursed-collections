@@ -1,5 +1,29 @@
 use std::cell;
 
+/// A collection with a size defined at creation, but where entries are initialized later.
+///
+/// It is useful when you are reading nodes of an acyclic graph, where entries can be read as you
+/// need them.
+///
+/// # Example
+///
+/// ```
+/// # use cursed_collections::LazyArray;
+/// #
+/// #[derive(Debug, Eq, PartialEq)]
+/// struct Entry<'heap> {
+///   value: i32,
+///   next: Option<&'heap Entry<'heap>>,
+/// }
+///
+/// fn main() {
+///   let heap = LazyArray::<Entry>::new(10);
+///   let entry_0 = heap.get_or_insert(3, Entry { value: 123, next: None });
+///   let entry_1 = heap.get_or_insert(6, Entry { value: 456, next: Some(entry_0) });
+///   assert_eq!(Some(123), entry_1.next.map(|inner| inner.value));
+///   assert_eq!(None, heap.get(2));
+/// }
+/// ```
 #[derive(Debug)]
 pub struct LazyArray<T>(cell::UnsafeCell<Box<[Option<T>]>>);
 
