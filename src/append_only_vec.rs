@@ -1,4 +1,4 @@
-use std::{cell, mem, ops, ptr};
+use std::{cell, mem, ops};
 
 const SEGMENT_CAPACITY_LOG_2: usize = 5;
 const SEGMENT_CAPACITY: usize = 1 << SEGMENT_CAPACITY_LOG_2;
@@ -6,73 +6,41 @@ const SEGMENT_CAPACITY_MASK: usize = SEGMENT_CAPACITY - 1;
 
 struct Segment<T> {
   len: usize,
-  elements: Option<Box<[T; SEGMENT_CAPACITY]>>,
+  elements: Box<[mem::ManuallyDrop<T>; SEGMENT_CAPACITY]>,
 }
 
 impl<T> Segment<T> {
   unsafe fn new() -> Segment<T> {
     Segment {
       len: 0,
-      elements: Some(Box::new(mem::uninitialized())),
+      elements: Box::new(mem::uninitialized()),
     }
   }
 
   fn is_full(&self) -> bool {
     self.len >= SEGMENT_CAPACITY
   }
-
-  /// Retrieves a reference to a slot within the segment, that may be unintialized memory.
-  ///
-  /// # Safety
-  ///
-  /// The returned reference points to initialized memory if and only if the given `index` is
-  /// smaller than `self.len`.
-  unsafe fn get_slot(&self, index: usize) -> &T {
-    if let Some(ref elements) = self.elements {
-      &elements[index]
-    } else {
-      panic!()
-    }
-  }
-
-  /// Retrieves a mutable reference to a slot within the segment, that may be unintialized memory.
-  ///
-  /// # Safety
-  ///
-  /// The returned reference points to initialized memory if and only if the given `index` is
-  /// smaller than `self.len`.
-  unsafe fn get_slot_mut(&mut self, index: usize) -> &mut T {
-    if let Some(ref mut elements) = self.elements {
-      &mut elements[index]
-    } else {
-      panic!()
-    }
-  }
 }
 
 impl<T> Drop for Segment<T> {
   fn drop(&mut self) {
     unsafe {
-      if let Some(mut elements) = mem::replace(&mut self.elements, None) {
-        for i in 0..self.len {
-          ptr::drop_in_place(&mut elements[i]);
-        }
-
-        mem::forget(elements);
+      for element in &mut self.elements[0..self.len] {
+        mem::ManuallyDrop::drop(element);
       }
     }
   }
 }
 
 impl<T> ops::Index<usize> for Segment<T> {
-  type Output = T;
+  type Output = mem::ManuallyDrop<T>;
 
   fn index(&self, index: usize) -> &<Self as ops::Index<usize>>::Output {
     if self.len <= index {
       panic!("index out of bounds")
     }
 
-    unsafe { self.get_slot(index) }
+    &self.elements[index]
   }
 }
 
@@ -82,7 +50,7 @@ impl<T> std::ops::IndexMut<usize> for Segment<T> {
       panic!("index out of bounds")
     }
 
-    unsafe { self.get_slot_mut(index) }
+    &mut self.elements[index]
   }
 }
 
@@ -100,7 +68,6 @@ impl<T> std::ops::IndexMut<usize> for Segment<T> {
 ///
 /// ```
 /// # use cursed_collections::AppendOnlyVec;
-/// #
 /// enum MyData<'buffers> {
 ///   Array(&'buffers [MyData<'buffers>]),
 ///   String(&'buffers str),
@@ -143,15 +110,13 @@ impl<T> AppendOnlyVec<T> {
       let len = last_segment.len;
       last_segment.len += 1;
 
-      // A simple assignment is not enough because *element_ref = element would invoke drop on
-      // the previous value of *element_ref, which is uninitialized memory.
-      let element_ref = last_segment.get_slot_mut(len);
-      mem::forget(mem::replace(element_ref, element));
+      let element_ref = &mut last_segment[len];
+      mem::replace(element_ref, mem::ManuallyDrop::new(element));
       element_ref
     }
   }
 
-  /// Return the number of elements in the vector.
+  /// Returns the number of elements in the vector.
   pub fn len(&self) -> usize {
     unsafe {
       let segments = self.segments();
