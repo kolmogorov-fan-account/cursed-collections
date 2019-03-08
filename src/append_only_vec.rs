@@ -150,7 +150,8 @@ impl<T> AppendOnlyVec<T> {
   unsafe fn add_segment(&self) -> &mut Segment<T> {
     let segments = self.segments();
     segments.push(cell::UnsafeCell::new(Segment::new()));
-    &mut *segments.last_mut().unwrap().get()
+    let index = segments.len() - 1;
+    &mut *segments.get_unchecked_mut(index).get()
   }
 
   unsafe fn segments(&self) -> &mut Vec<cell::UnsafeCell<Segment<T>>> {
