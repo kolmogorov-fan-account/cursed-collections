@@ -2,10 +2,8 @@
 name = "cursed-collections"
 description = "Collections that (seem) to break Rust safety."
 version = "0.6.0"
-authors = ["Simon Génier <1782845+animalsiknow@users.noreply.github.com>"]
-homepage = "https://github.com/animalsiknow/cursed-collections"
+authors = ["Simon Génier <simon.genier@protonmail.com>"]
+homepage = "https://github.com/kolmogorov-fan-account/cursed-collections"
 license = "GPL-3.0+"
 readme = "README.md"
 edition = "2018"
-
-[dependencies]
