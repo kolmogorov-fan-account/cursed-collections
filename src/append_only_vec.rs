@@ -1,4 +1,5 @@
-use std::{cell, mem, ops};
+use std::mem::MaybeUninit;
+use std::{cell, mem, ops, ptr};
 
 const SEGMENT_CAPACITY_LOG_2: usize = 5;
 const SEGMENT_CAPACITY: usize = 1 << SEGMENT_CAPACITY_LOG_2;
@@ -6,14 +7,14 @@ const SEGMENT_CAPACITY_MASK: usize = SEGMENT_CAPACITY - 1;
 
 struct Segment<T> {
     len: usize,
-    elements: Box<[mem::ManuallyDrop<T>; SEGMENT_CAPACITY]>,
+    elements: Box<[mem::MaybeUninit<T>; SEGMENT_CAPACITY]>,
 }
 
 impl<T> Segment<T> {
     unsafe fn new() -> Segment<T> {
         Segment {
             len: 0,
-            elements: Box::new(mem::uninitialized()),
+            elements: Box::new(mem::MaybeUninit::uninit().assume_init()),
         }
     }
 
@@ -26,14 +27,14 @@ impl<T> Drop for Segment<T> {
     fn drop(&mut self) {
         unsafe {
             for element in &mut self.elements[0..self.len] {
-                mem::ManuallyDrop::drop(element);
+                ptr::drop_in_place(element.as_mut_ptr());
             }
         }
     }
 }
 
 impl<T> ops::Index<usize> for Segment<T> {
-    type Output = mem::ManuallyDrop<T>;
+    type Output = MaybeUninit<T>;
 
     fn index(&self, index: usize) -> &<Self as ops::Index<usize>>::Output {
         if self.len <= index {
@@ -111,8 +112,8 @@ impl<T> AppendOnlyVec<T> {
             last_segment.len += 1;
 
             let element_ref = &mut last_segment[len];
-            mem::replace(element_ref, mem::ManuallyDrop::new(element));
-            element_ref
+            *element_ref = mem::MaybeUninit::new(element);
+            element_ref.as_ptr().as_ref().unwrap()
         }
     }
 
@@ -171,7 +172,7 @@ impl<T> ops::Index<usize> for AppendOnlyVec<T> {
     fn index(&self, index: usize) -> &Self::Output {
         unsafe {
             let segment = self.get_segment_at(index >> SEGMENT_CAPACITY_LOG_2);
-            &segment[index & SEGMENT_CAPACITY_MASK]
+            segment[index & SEGMENT_CAPACITY_MASK].as_ptr().as_ref().unwrap()
         }
     }
 }
