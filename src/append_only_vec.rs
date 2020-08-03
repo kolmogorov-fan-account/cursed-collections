@@ -1,4 +1,5 @@
-use std::mem::MaybeUninit;
+use std::cell::UnsafeCell;
+use std::ptr::NonNull;
 use std::{cell, mem, ops, ptr};
 
 const SEGMENT_CAPACITY_LOG_2: usize = 5;
@@ -17,10 +18,6 @@ impl<T> Segment<T> {
             elements: Box::new(mem::MaybeUninit::uninit().assume_init()),
         }
     }
-
-    fn is_full(&self) -> bool {
-        self.len >= SEGMENT_CAPACITY
-    }
 }
 
 impl<T> Drop for Segment<T> {
@@ -34,7 +31,7 @@ impl<T> Drop for Segment<T> {
 }
 
 impl<T> ops::Index<usize> for Segment<T> {
-    type Output = MaybeUninit<T>;
+    type Output = mem::MaybeUninit<T>;
 
     fn index(&self, index: usize) -> &<Self as ops::Index<usize>>::Output {
         if self.len <= index {
@@ -70,24 +67,22 @@ impl<T> std::ops::IndexMut<usize> for Segment<T> {
 /// ```
 /// # use cursed_collections::AppendOnlyVec;
 /// enum MyData<'buffers> {
-///   Array(&'buffers [MyData<'buffers>]),
-///   String(&'buffers str),
+///     Array(&'buffers [MyData<'buffers>]),
+///     String(&'buffers str),
 /// }
 ///
-/// fn main() {
-///   let string_buf = AppendOnlyVec::<String>::new();
-///   let array_buf = AppendOnlyVec::<Vec<MyData>>::new();
+/// let string_buf = AppendOnlyVec::<String>::new();
+/// let array_buf = AppendOnlyVec::<Vec<MyData>>::new();
 ///
-///   let my_key = MyData::String(string_buf.push("name".into()));
-///   let my_name = MyData::String(string_buf.push("Simon".into()));
-///   let my_array = MyData::Array(array_buf.push(vec![my_key, my_name]));
+/// let my_key = MyData::String(string_buf.push("name".into()));
+/// let my_name = MyData::String(string_buf.push("Simon".into()));
+/// let my_array = MyData::Array(array_buf.push(vec![my_key, my_name]));
 ///
-///   match my_array {
+/// match my_array {
 ///     MyData::Array(&[MyData::String("name"), MyData::String(name)]) => {
-///       println!("Hello, {}", name)
+///         println!("Hello, {}", name)
 ///     }
 ///     _ => println!("Hello!"),
-///   }
 /// }
 /// ```
 pub struct AppendOnlyVec<T> {
@@ -106,7 +101,18 @@ impl<T> AppendOnlyVec<T> {
     /// appended element.
     pub fn push(&self, element: T) -> &T {
         unsafe {
-            let last_segment = self.get_segment_with_spare_capacity();
+            let segments = &mut *self.segments().as_ptr();
+            let last_segment: &mut Segment<T> = match segments
+                .last_mut()
+                .map(|s| ptr::NonNull::new_unchecked(s.get()))
+            {
+                Some(segment) if segment.as_ref().len < SEGMENT_CAPACITY => &mut *segment.as_ptr(),
+                _ => {
+                    let index = segments.len();
+                    segments.push(cell::UnsafeCell::new(Segment::new()));
+                    &mut *ptr::NonNull::new_unchecked(segments[index].get()).as_ptr()
+                }
+            };
 
             let len = last_segment.len;
             last_segment.len += 1;
@@ -120,43 +126,22 @@ impl<T> AppendOnlyVec<T> {
     /// Returns the number of elements in the vector.
     pub fn len(&self) -> usize {
         unsafe {
-            let segments = self.segments();
+            let segments = &*self.segments().as_ptr();
             if let Some(last_segment) = segments.last() {
-                ((segments.len() - 1) << SEGMENT_CAPACITY_LOG_2) + (&*last_segment.get()).len
+                let last_segment = &*ptr::NonNull::new_unchecked(last_segment.get()).as_ptr();
+                ((segments.len() - 1) << SEGMENT_CAPACITY_LOG_2) + last_segment.len
             } else {
                 0
             }
         }
     }
 
-    unsafe fn get_segment_at(&self, index: usize) -> &Segment<T> {
-        let segments = self.segments();
-        &*segments[index].get()
+    pub fn is_empty(&self) -> bool {
+        unsafe { self.segments().as_ref().is_empty() }
     }
 
-    unsafe fn get_segment_with_spare_capacity(&self) -> &mut Segment<T> {
-        let segments = self.segments();
-        match segments.last_mut() {
-            None => self.add_segment(),
-            Some(segment) => {
-                if (*segment.get()).is_full() {
-                    self.add_segment()
-                } else {
-                    &mut *segment.get()
-                }
-            }
-        }
-    }
-
-    unsafe fn add_segment(&self) -> &mut Segment<T> {
-        let segments = self.segments();
-        segments.push(cell::UnsafeCell::new(Segment::new()));
-        let index = segments.len() - 1;
-        &mut *segments.get_unchecked_mut(index).get()
-    }
-
-    unsafe fn segments(&self) -> &mut Vec<cell::UnsafeCell<Segment<T>>> {
-        &mut *self.segments.get()
+    unsafe fn segments(&self) -> NonNull<Vec<UnsafeCell<Segment<T>>>> {
+        ptr::NonNull::new_unchecked(self.segments.get())
     }
 }
 
@@ -171,8 +156,14 @@ impl<T> ops::Index<usize> for AppendOnlyVec<T> {
 
     fn index(&self, index: usize) -> &Self::Output {
         unsafe {
-            let segment = self.get_segment_at(index >> SEGMENT_CAPACITY_LOG_2);
-            segment[index & SEGMENT_CAPACITY_MASK].as_ptr().as_ref().unwrap()
+            let segments = &*self.segments().as_ptr();
+            let segment =
+                &*ptr::NonNull::new_unchecked(segments[index >> SEGMENT_CAPACITY_LOG_2].get())
+                    .as_ptr();
+            segment[index & SEGMENT_CAPACITY_MASK]
+                .as_ptr()
+                .as_ref()
+                .unwrap()
         }
     }
 }

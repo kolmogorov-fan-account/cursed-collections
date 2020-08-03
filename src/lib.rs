@@ -7,7 +7,7 @@
 //! rescue. This create offers different collections that offer an extremely narrow interface in
 //! exchange of doing things that are unusual in safe rust.
 //!
-//! All collections in this crate are extremely cursed, yet respect the safety garanties of Rust…
+//! All collections in this crate are extremely cursed, yet respect the safety guaranties of Rust…
 //! assuming they are bug free!
 
 mod append_only_vec;
