@@ -214,7 +214,7 @@ mod tests {
         let vec = AppendOnlyVec::<String>::new();
         vec.push("hello".into());
         vec.push("bye".into());
-        &vec[2];
+        let _ = &vec[2];
     }
 
     #[test]
