@@ -7,3 +7,7 @@ homepage = "https://github.com/kolmogorov-fan-account/cursed-collections"
 license = "GPL-3.0+"
 readme = "README.md"
 edition = "2018"
+
+[dev-dependencies]
+quickcheck = "1"
+quickcheck_macros = "1"

@@ -10,8 +10,12 @@
 //! All collections in this crate are extremely cursed, yet respect the safety guaranties of Rust…
 //! assuming they are bug free!
 
+extern crate core;
+
 mod append_only_vec;
 mod lazy_array;
+mod symbol_table;
 
 pub use crate::append_only_vec::AppendOnlyVec;
 pub use crate::lazy_array::LazyArray;
+pub use crate::symbol_table::{Symbol, SymbolTable};
