@@ -1,4 +1,4 @@
-use std::cell;
+use std::{alloc, mem, ptr, slice};
 
 /// A collection with a size defined at creation, but where entries are initialized later.
 ///
@@ -16,33 +16,72 @@ use std::cell;
 ///     next: Option<&'heap Entry<'heap>>,
 /// }
 ///
-/// let heap = LazyArray::<Entry>::new(10);
-/// let entry_0 = heap.get_or_insert(3, Entry { value: 123, next: None });
-/// let entry_1 = heap.get_or_insert(6, Entry { value: 456, next: Some(entry_0) });
-/// assert_eq!(Some(123), entry_1.next.map(|inner| inner.value));
-/// assert_eq!(None, heap.get(2));
+/// fn do_something<'heap>(heap: &'heap LazyArray<Entry<'heap>>) {
+///     let entry_0 = heap.get_or_insert(3, Entry { value: 123, next: None });
+///     let entry_1 = heap.get_or_insert(6, Entry { value: 456, next: Some(entry_0) });
+///     assert_eq!(Some(123), entry_1.next.map(|inner| inner.value));
+///     assert_eq!(None, heap.get(2));
+/// }
 /// ```
 #[derive(Debug)]
-pub struct LazyArray<T>(cell::UnsafeCell<Box<[Option<T>]>>);
+pub struct LazyArray<T> {
+    buffer: *mut Option<T>,
+    capacity: usize,
+    layout: alloc::Layout,
+}
 
 impl<T> LazyArray<T> {
-    pub fn new(size: usize) -> LazyArray<T> {
-        let mut init = Vec::<Option<T>>::with_capacity(size);
-        for _ in 0..size {
-            init.push(None)
+    pub fn new(capacity: usize) -> Self {
+        unsafe {
+            let layout = alloc::Layout::array::<Option<T>>(capacity).expect("size overflow");
+            let buffer = alloc::alloc(layout);
+            {
+                let slice =
+                    slice::from_raw_parts_mut(buffer as *mut mem::MaybeUninit<Option<T>>, capacity);
+                for i in slice {
+                    *i = mem::MaybeUninit::new(None);
+                }
+            }
+            Self {
+                buffer: buffer as *mut Option<T>,
+                capacity,
+                layout,
+            }
         }
-        LazyArray(cell::UnsafeCell::new(init.into_boxed_slice()))
+    }
+
+    fn entry(&self, index: usize) -> *mut Option<T> {
+        unsafe {
+            assert!(index < self.capacity);
+            self.buffer.add(index)
+        }
     }
 
     pub fn get_or_insert(&self, index: usize, t: T) -> &T {
-        (&mut unsafe { &mut *self.0.get() }[index]).get_or_insert(t)
+        unsafe {
+            // We cannot use Option::get_or_insert because we need to construct a &mut, which is
+            // unsound if it is already initialized because there may be & existing!
+            let entry = self.entry(index);
+            match *entry {
+                None => {
+                    ptr::write(entry, Some(t));
+                    (*entry).as_ref().unwrap_unchecked()
+                }
+                Some(ref v) => v,
+            }
+        }
     }
 
     pub fn get(&self, index: usize) -> Option<&T> {
-        if let Some(ref element) = unsafe { &*self.0.get() }[index] {
-            Some(element)
-        } else {
-            None
+        assert!(index < self.capacity);
+        unsafe { (*self.buffer.add(index)).as_ref() }
+    }
+}
+
+impl<T> Drop for LazyArray<T> {
+    fn drop(&mut self) {
+        unsafe {
+            alloc::dealloc(self.buffer as *mut u8, self.layout);
         }
     }
 }
