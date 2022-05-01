@@ -96,7 +96,7 @@ impl<T> Drop for AppendOnlyVec<T> {
         unsafe {
             let tail = *self.tail.get();
             if !tail.is_null() {
-                for i in 0..(self.tail_size.get()) {
+                for i in 0..self.tail_size.get() {
                     ptr::drop_in_place(tail.add(i))
                 }
                 alloc::dealloc(tail as _, self.layout);
@@ -142,6 +142,7 @@ impl<T> ops::Index<usize> for AppendOnlyVec<T> {
 #[cfg(test)]
 mod tests {
     use super::{AppendOnlyVec, SEGMENT_CAPACITY};
+    use quickcheck_macros::quickcheck;
     use std::ptr;
 
     #[test]
@@ -208,5 +209,15 @@ mod tests {
             vec.push(format!("{}", i));
         }
         assert_eq!(33, vec.len())
+    }
+
+    #[quickcheck]
+    #[cfg_attr(miri, ignore)]
+    fn is_same_as_vector_once_fully_initialized(expected: Vec<String>) -> bool {
+        let actual = AppendOnlyVec::new();
+        for value in &expected {
+            actual.push(value.clone());
+        }
+        (0..expected.len()).all(|i| actual[i] == expected[i])
     }
 }
