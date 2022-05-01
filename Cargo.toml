@@ -6,7 +6,7 @@ authors = ["Simon Génier <simon.genier@protonmail.com>"]
 homepage = "https://github.com/kolmogorov-fan-account/cursed-collections"
 license = "GPL-3.0+"
 readme = "README.md"
-edition = "2018"
+edition = "2021"
 categories = ["data-structures", "no-std"]
 
 [dependencies]
