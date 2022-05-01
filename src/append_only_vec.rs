@@ -1,56 +1,4 @@
-use std::cell::UnsafeCell;
-use std::ptr::NonNull;
-use std::{cell, mem, ops, ptr};
-
-const SEGMENT_CAPACITY_LOG_2: usize = 5;
-const SEGMENT_CAPACITY: usize = 1 << SEGMENT_CAPACITY_LOG_2;
-const SEGMENT_CAPACITY_MASK: usize = SEGMENT_CAPACITY - 1;
-
-struct Segment<T> {
-    len: usize,
-    elements: Box<[mem::MaybeUninit<T>; SEGMENT_CAPACITY]>,
-}
-
-impl<T> Segment<T> {
-    unsafe fn new() -> Segment<T> {
-        Segment {
-            len: 0,
-            elements: Box::new(mem::MaybeUninit::uninit().assume_init()),
-        }
-    }
-}
-
-impl<T> Drop for Segment<T> {
-    fn drop(&mut self) {
-        unsafe {
-            for element in &mut self.elements[0..self.len] {
-                ptr::drop_in_place(element.as_mut_ptr());
-            }
-        }
-    }
-}
-
-impl<T> ops::Index<usize> for Segment<T> {
-    type Output = mem::MaybeUninit<T>;
-
-    fn index(&self, index: usize) -> &<Self as ops::Index<usize>>::Output {
-        if self.len <= index {
-            panic!("index out of bounds")
-        }
-
-        &self.elements[index]
-    }
-}
-
-impl<T> std::ops::IndexMut<usize> for Segment<T> {
-    fn index_mut(&mut self, index: usize) -> &mut <Self as ops::Index<usize>>::Output {
-        if self.len <= index {
-            panic!("index out of bounds")
-        }
-
-        &mut self.elements[index]
-    }
-}
+use std::{alloc, cell, cmp, ops, ptr};
 
 /// A collection onto which new values can be appended, while still keeping references to previous
 /// values valid.
@@ -86,62 +34,80 @@ impl<T> std::ops::IndexMut<usize> for Segment<T> {
 /// }
 /// ```
 pub struct AppendOnlyVec<T> {
-    segments: cell::UnsafeCell<Vec<cell::UnsafeCell<Segment<T>>>>,
+    segments: cell::UnsafeCell<Vec<*mut T>>,
+    tail: cell::UnsafeCell<*mut T>,
+    tail_size: cell::Cell<usize>,
+    layout: alloc::Layout,
 }
+
+const SEGMENT_CAPACITY_LOG_2: usize = 5;
+const SEGMENT_CAPACITY: usize = 1 << SEGMENT_CAPACITY_LOG_2;
+const SEGMENT_CAPACITY_MASK: usize = SEGMENT_CAPACITY - 1;
 
 impl<T> AppendOnlyVec<T> {
     /// Creates an empty `AppendOnlyVec`.
     pub fn new() -> AppendOnlyVec<T> {
         AppendOnlyVec {
             segments: cell::UnsafeCell::new(vec![]),
+            tail: cell::UnsafeCell::new(ptr::null_mut()),
+            tail_size: cell::Cell::new(0),
+            layout: alloc::Layout::new::<[T; SEGMENT_CAPACITY]>(),
         }
     }
 
     /// Consumes a `T`, appends it to the end of the vector, and returns a reference to the newly
     /// appended element.
-    pub fn push(&self, element: T) -> &T {
+    pub fn push(&self, value: T) -> &T {
         unsafe {
-            let segments = &mut *self.segments().as_ptr();
-            let last_segment: &mut Segment<T> = match segments
-                .last_mut()
-                .map(|s| ptr::NonNull::new_unchecked(s.get()))
-            {
-                Some(segment) if segment.as_ref().len < SEGMENT_CAPACITY => &mut *segment.as_ptr(),
-                _ => {
-                    let index = segments.len();
-                    segments.push(cell::UnsafeCell::new(Segment::new()));
-                    &mut *ptr::NonNull::new_unchecked(segments[index].get()).as_ptr()
-                }
-            };
+            let tail = self.tail.get();
+            if (*tail).is_null() {
+                ptr::write(tail, alloc::alloc(self.layout) as *mut T)
+            }
 
-            let len = last_segment.len;
-            last_segment.len += 1;
+            let tail_size = self.tail_size.get();
+            let dst = (*tail).add(tail_size);
+            ptr::write(dst, value);
 
-            let element_ref = &mut last_segment[len];
-            *element_ref = mem::MaybeUninit::new(element);
-            element_ref.as_ptr().as_ref().unwrap()
+            let next_tail_size = tail_size + 1;
+            self.tail_size.set(if next_tail_size == SEGMENT_CAPACITY {
+                let tail = ptr::replace(tail, ptr::null_mut());
+                (*self.segments.get()).push(tail);
+                0
+            } else {
+                next_tail_size
+            });
+
+            &*dst
         }
     }
 
     /// Returns the number of elements in the vector.
     pub fn len(&self) -> usize {
-        unsafe {
-            let segments = &*self.segments().as_ptr();
-            if let Some(last_segment) = segments.last() {
-                let last_segment = &*ptr::NonNull::new_unchecked(last_segment.get()).as_ptr();
-                ((segments.len() - 1) << SEGMENT_CAPACITY_LOG_2) + last_segment.len
-            } else {
-                0
-            }
-        }
+        unsafe { (*self.segments.get()).len() * SEGMENT_CAPACITY + self.tail_size.get() }
     }
 
     pub fn is_empty(&self) -> bool {
-        unsafe { self.segments().as_ref().is_empty() }
+        unsafe { self.tail_size.get() == 0 && (*self.segments.get()).is_empty() }
     }
+}
 
-    unsafe fn segments(&self) -> NonNull<Vec<UnsafeCell<Segment<T>>>> {
-        ptr::NonNull::new_unchecked(self.segments.get())
+impl<T> Drop for AppendOnlyVec<T> {
+    fn drop(&mut self) {
+        unsafe {
+            let tail = *self.tail.get();
+            if !tail.is_null() {
+                for i in 0..(self.tail_size.get()) {
+                    ptr::drop_in_place(tail.add(i))
+                }
+                alloc::dealloc(tail as _, self.layout);
+            }
+            for segment in (*self.segments.get()).drain(..) {
+                for i in 0..SEGMENT_CAPACITY {
+                    ptr::drop_in_place(segment.add(i));
+                }
+                alloc::dealloc(segment as _, self.layout);
+            }
+        }
     }
 }
 
@@ -156,14 +122,19 @@ impl<T> ops::Index<usize> for AppendOnlyVec<T> {
 
     fn index(&self, index: usize) -> &Self::Output {
         unsafe {
-            let segments = &*self.segments().as_ptr();
-            let segment =
-                &*ptr::NonNull::new_unchecked(segments[index >> SEGMENT_CAPACITY_LOG_2].get())
-                    .as_ptr();
-            segment[index & SEGMENT_CAPACITY_MASK]
-                .as_ptr()
-                .as_ref()
-                .unwrap()
+            let segment_offset = index & SEGMENT_CAPACITY_MASK;
+            let segment_index = (index & !SEGMENT_CAPACITY_MASK) >> SEGMENT_CAPACITY_LOG_2;
+
+            match segment_index.cmp(&(*self.segments.get()).len()) {
+                cmp::Ordering::Less => {
+                    let segment = *(*self.segments.get()).get_unchecked(segment_index);
+                    &*segment.add(segment_offset)
+                }
+                cmp::Ordering::Equal if segment_offset < self.tail_size.get() => {
+                    &*(*self.tail.get()).add(segment_offset)
+                }
+                _ => panic!("out of bounds, buddy"),
+            }
         }
     }
 }
