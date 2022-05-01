@@ -1,10 +1,6 @@
-use std::{
-    alloc, cell,
-    collections::HashSet,
-    hash::{Hash, Hasher},
-    marker::PhantomData,
-    mem, ptr, slice, str,
-};
+use ::alloc::{alloc, string::String, vec};
+use core::{cell, hash, marker, mem, ptr, slice, str};
+use hashbrown::HashSet;
 
 const LARGE_SYMBOL_THRESHOLD: usize = 1 << 9;
 const SEGMENT_CAPACITY: usize = 1 << 12;
@@ -26,8 +22,8 @@ impl PartialEq for SymbolKey {
 
 impl Eq for SymbolKey {}
 
-impl Hash for SymbolKey {
-    fn hash<H: Hasher>(&self, state: &mut H) {
+impl hash::Hash for SymbolKey {
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
         unsafe { (*self.0).hash(state) }
     }
 }
@@ -36,14 +32,14 @@ impl Hash for SymbolKey {
 #[derive(Debug)]
 pub struct Symbol<'table> {
     ptr: *const str,
-    _p: PhantomData<&'table str>,
+    _p: marker::PhantomData<&'table str>,
 }
 
 impl<'table> Symbol<'table> {
     fn new(ptr: *const str) -> Self {
         Self {
             ptr,
-            _p: PhantomData,
+            _p: marker::PhantomData,
         }
     }
 }
@@ -66,8 +62,8 @@ const BUFFER_LAYOUT: alloc::Layout = alloc::Layout::new::<[u8; SEGMENT_CAPACITY]
 
 pub struct SymbolTable {
     lookup: cell::UnsafeCell<HashSet<SymbolKey>>,
-    small_symbols: cell::UnsafeCell<Vec<*const u8>>,
-    large_symbols: cell::UnsafeCell<Vec<(*const u8, usize, usize)>>,
+    small_symbols: cell::UnsafeCell<vec::Vec<*const u8>>,
+    large_symbols: cell::UnsafeCell<vec::Vec<(*const u8, usize, usize)>>,
     tail: cell::Cell<*mut u8>,
     tail_offset: cell::Cell<usize>,
 }

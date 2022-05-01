@@ -1,4 +1,5 @@
-use std::{alloc, mem, ptr, slice};
+use ::alloc::alloc;
+use core::{mem, ptr, slice};
 
 /// A collection with a size defined at creation, but where entries are initialized later.
 ///

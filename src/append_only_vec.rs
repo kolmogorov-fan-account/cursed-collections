@@ -1,4 +1,5 @@
-use std::{alloc, cell, cmp, ops, ptr};
+use ::alloc::{alloc, vec};
+use core::{cell, cmp, ops, ptr};
 
 /// A collection onto which new values can be appended, while still keeping references to previous
 /// values valid.
@@ -34,7 +35,7 @@ use std::{alloc, cell, cmp, ops, ptr};
 /// }
 /// ```
 pub struct AppendOnlyVec<T> {
-    segments: cell::UnsafeCell<Vec<*mut T>>,
+    segments: cell::UnsafeCell<vec::Vec<*mut T>>,
     tail: cell::UnsafeCell<*mut T>,
     tail_size: cell::Cell<usize>,
     layout: alloc::Layout,

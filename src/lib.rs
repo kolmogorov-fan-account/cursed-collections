@@ -10,7 +10,9 @@
 //! All collections in this crate are extremely cursed, yet respect the safety guaranties of Rust…
 //! assuming they are bug free!
 
-extern crate core;
+#![cfg_attr(not(test), no_std)]
+
+extern crate alloc;
 
 mod append_only_vec;
 mod lazy_array;
