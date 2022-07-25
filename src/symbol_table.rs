@@ -28,6 +28,10 @@ impl hash::Hash for SymbolKey {
     }
 }
 
+/// Like a `&str`, but with constant time equality comparison.
+///
+/// It is a distinct type from `&str` to avoid confusion where an interned string could be compared
+/// to an uninterned string and give a confusing false negative.
 #[repr(transparent)]
 #[derive(Copy, Clone)]
 pub struct Symbol<'table> {
@@ -72,6 +76,8 @@ impl<'table> fmt::Display for Symbol<'table> {
 
 const BUFFER_LAYOUT: alloc::Layout = alloc::Layout::new::<[u8; SEGMENT_CAPACITY]>();
 
+/// A set of strings. Unlike a regular set, strings are stored contiguously in pages to reduce
+/// memory usage.
 pub struct SymbolTable {
     lookup: cell::UnsafeCell<HashSet<SymbolKey>>,
     small_symbols: cell::UnsafeCell<vec::Vec<*const u8>>,
@@ -81,6 +87,9 @@ pub struct SymbolTable {
 }
 
 impl SymbolTable {
+    /// Create an empty table.
+    ///
+    /// Unlike many types in `alloc`, this allocates right away.
     pub fn new() -> Self {
         unsafe {
             Self {
@@ -93,6 +102,15 @@ impl SymbolTable {
         }
     }
 
+    /// Adds a symbol to the table if it does not exist.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use cursed_collections::SymbolTable;
+    /// let table = SymbolTable::new();
+    /// assert_eq!(table.intern("my symbol"), table.intern("my symbol"));
+    /// ```
     pub fn intern(&self, text: impl Into<String> + AsRef<str>) -> Symbol {
         unsafe {
             let lookup = &mut *self.lookup.get();
@@ -106,6 +124,21 @@ impl SymbolTable {
         }
     }
 
+    /// Adds a symbol to the table. This symbol is always considered distinct from all other symbols
+    /// even if they are textually identical.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use cursed_collections::SymbolTable;
+    /// let table = SymbolTable::new();
+    /// assert_ne!(table.intern("my symbol"), table.gensym("my symbol"));
+    /// ```
+    ///
+    /// # Name
+    ///
+    /// The name "`gensym`" is common within the Lisp family of languages where symbols is built in
+    /// the language itself.
     pub fn gensym(&self, text: impl Into<String> + AsRef<str>) -> Symbol {
         unsafe {
             let text_len = text.as_ref().len();
