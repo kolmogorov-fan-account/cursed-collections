@@ -144,8 +144,7 @@ impl Default for SymbolTable {
 
 #[cfg(test)]
 mod tests {
-    use super::{Symbol, SymbolTable};
-    use crate::symbol_table::LARGE_SYMBOL_THRESHOLD;
+    use super::{Symbol, SymbolTable, LARGE_SYMBOL_THRESHOLD};
     use quickcheck_macros::quickcheck;
     use std::{iter, ptr};
 
