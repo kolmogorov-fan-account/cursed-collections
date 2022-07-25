@@ -1,5 +1,5 @@
 use ::alloc::{alloc, string::String, vec};
-use core::{cell, hash, marker, mem, ptr, slice, str};
+use core::{cell, fmt, hash, marker, mem, ptr, slice, str};
 use hashbrown::HashSet;
 
 const LARGE_SYMBOL_THRESHOLD: usize = 1 << 9;
@@ -29,7 +29,7 @@ impl hash::Hash for SymbolKey {
 }
 
 #[repr(transparent)]
-#[derive(Debug)]
+#[derive(Copy, Clone)]
 pub struct Symbol<'table> {
     ptr: *const str,
     _p: marker::PhantomData<&'table str>,
@@ -55,6 +55,18 @@ impl<'table> Eq for Symbol<'table> {}
 impl<'table> AsRef<str> for Symbol<'table> {
     fn as_ref(&self) -> &str {
         unsafe { &*self.ptr }
+    }
+}
+
+impl<'table> fmt::Debug for Symbol<'table> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        unsafe { write!(f, "{:?}@{:p}", &*self.ptr, self.ptr) }
+    }
+}
+
+impl<'table> fmt::Display for Symbol<'table> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        unsafe { f.write_str(&*self.ptr) }
     }
 }
 
