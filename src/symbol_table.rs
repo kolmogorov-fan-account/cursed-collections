@@ -137,7 +137,7 @@ impl SymbolTable {
     ///
     /// # Name
     ///
-    /// The name "`gensym`" is common within the Lisp family of languages where symbols is built in
+    /// The name "`gensym`" is common within the Lisp family of languages where symbols are built in
     /// the language itself.
     pub fn gensym(&self, text: impl Into<String> + AsRef<str>) -> Symbol {
         unsafe {
