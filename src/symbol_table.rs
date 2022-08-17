@@ -1,4 +1,5 @@
 use ::alloc::{alloc, string::String, vec};
+use core::borrow::Borrow;
 use core::{cell, fmt, hash, marker, mem, ptr, slice, str};
 use hashbrown::HashSet;
 
@@ -71,6 +72,12 @@ impl<'table> fmt::Debug for Symbol<'table> {
 impl<'table> fmt::Display for Symbol<'table> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         unsafe { f.write_str(&*self.ptr) }
+    }
+}
+
+impl<'table> Borrow<str> for Symbol<'table> {
+    fn borrow(&self) -> &str {
+        self.as_ref()
     }
 }
 
