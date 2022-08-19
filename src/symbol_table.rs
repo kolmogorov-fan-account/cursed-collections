@@ -1,5 +1,6 @@
 use ::alloc::{alloc, string::String, vec};
 use core::borrow::Borrow;
+use core::hash::{Hash, Hasher};
 use core::{cell, fmt, hash, marker, mem, ptr, slice, str};
 use hashbrown::HashSet;
 
@@ -56,6 +57,12 @@ impl<'table> PartialEq for Symbol<'table> {
 }
 
 impl<'table> Eq for Symbol<'table> {}
+
+impl<'table> Hash for Symbol<'table> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.as_ref().hash(state)
+    }
+}
 
 impl<'table> AsRef<str> for Symbol<'table> {
     fn as_ref(&self) -> &str {
