@@ -48,6 +48,10 @@ impl<'table> Symbol<'table> {
             _p: marker::PhantomData,
         }
     }
+
+    pub fn as_str(self) -> &'table str {
+        unsafe { &*self.ptr }
+    }
 }
 
 impl<'table> PartialEq for Symbol<'table> {
@@ -60,25 +64,25 @@ impl<'table> Eq for Symbol<'table> {}
 
 impl<'table> Hash for Symbol<'table> {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.as_ref().hash(state)
+        self.as_str().hash(state)
     }
 }
 
 impl<'table> AsRef<str> for Symbol<'table> {
     fn as_ref(&self) -> &str {
-        unsafe { &*self.ptr }
+        self.as_str()
     }
 }
 
 impl<'table> fmt::Debug for Symbol<'table> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        unsafe { write!(f, "{:?}@{:p}", &*self.ptr, self.ptr) }
+        write!(f, "{:?}@{:p}", self.as_str(), self.ptr)
     }
 }
 
 impl<'table> fmt::Display for Symbol<'table> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        unsafe { f.write_str(&*self.ptr) }
+        f.write_str(self.as_str())
     }
 }
 
